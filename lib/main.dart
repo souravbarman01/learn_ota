@@ -63,6 +63,13 @@ class HomePage extends StatelessWidget {
               ),
               child: const Text('Hello Patch 2'),
             ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Hello Patch 3')),
+              ),
+              child: const Text('Hello Patch 3'),
+            ),
           ],
         ),
       ),

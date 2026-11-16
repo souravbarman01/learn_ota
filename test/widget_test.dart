@@ -11,6 +11,7 @@ void main() {
 
     expect(find.widgetWithText(FilledButton, 'Hello Patch 1'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Hello Patch 2'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Hello Patch 3'), findsOneWidget);
     expect(find.byIcon(Icons.system_update), findsOneWidget);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Hello Patch 2'));
