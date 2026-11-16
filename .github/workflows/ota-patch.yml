@@ -1,0 +1,97 @@
+name: OTA patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lib/**"
+      - "assets/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ota-patch
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.47.5"   # ← exact version, same as release-host.yml
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout baselines
+        uses: actions/checkout@v4
+        with:
+          ref: baselines
+          path: .flutter_patcher/baselines
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.flutter_patcher
+          key: fp-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
+
+      - run: flutter pub get
+
+      - name: Build patch
+        env:
+          FLUTTER_PATCHER_KEYS: ${{ secrets.FLUTTER_PATCHER_KEYS }}
+        run: |
+          mkdir -p build/patch
+          dart run flutter_patcher patch android --out build/patch | tee build/patch-result.json
+
+      - name: Publish to GitHub Pages
+        run: |
+          FILE=$(find build/patch -name '*.fptc' | head -n1)
+          if [ -z "$FILE" ]; then
+            echo "::error::No .fptc produced (see patch-result.json above)"; exit 1
+          fi
+          NAME=$(basename "$FILE")
+          VC=$(grep '^version:' pubspec.yaml | sed 's/.*+//')
+          # merge commits keep the PR title in the body; fall back to subject
+          TITLE=$(git log -1 --pretty=%b | head -n1)
+          [ -z "$TITLE" ] && TITLE=$(git log -1 --pretty=%s)
+
+          mkdir -p site/patches
+          cp "$FILE" "site/patches/$NAME"
+          [ -f site/patches/patches.json ] || echo '[]' > site/patches/patches.json
+
+          ENTRY=$(jq -n \
+            --arg id "${GITHUB_SHA::7}" \
+            --arg title "$TITLE" \
+            --arg file "$NAME" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson vc "$VC" \
+            '{id:$id, title:$title, file:$file, createdAt:$date, versionCode:$vc}')
+          jq --argjson e "$ENTRY" '[$e] + .' site/patches/patches.json > /tmp/p.json
+          mv /tmp/p.json site/patches/patches.json
+
+          cd site
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "OTA patch ${GITHUB_SHA::7}: $TITLE"
+          git push origin HEAD:gh-pages

@@ -1,0 +1,71 @@
+name: Release host (store build)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: "3.47.5"   # ← exact version, same as local
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Checkout baselines branch
+        uses: actions/checkout@v4
+        with:
+          ref: baselines
+          path: .flutter_patcher/baselines
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Cache flutter_patcher engines/tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.flutter_patcher
+          key: fp-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
+
+      - run: flutter pub get
+      - run: dart run flutter_patcher doctor --project
+
+      - name: Build release host + baseline
+        env:
+          FLUTTER_PATCHER_KEYS: ${{ secrets.FLUTTER_PATCHER_KEYS }}
+        run: dart run flutter_patcher build android --out build/host
+
+      - name: Save baseline to `baselines` branch
+        working-directory: .flutter_patcher/baselines
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Baseline for $(grep '^version:' ../../pubspec.yaml)" || echo "nothing new"
+          git push origin HEAD:baselines
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: host-build
+          path: build/host
+
+      - name: Create GitHub Release with the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          APKS=$(find build/host -name '*.apk')
+          gh release create "v$VERSION" $APKS --title "v$VERSION" --notes "Store build $VERSION" --target main
