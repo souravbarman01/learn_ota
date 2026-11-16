@@ -29,6 +29,7 @@ This guide sets up the flow below in the `learn_ota` project.
 |---|---|
 | **Flutter 3.47.0 – 3.47.9 only** | This project is pinned to **3.47.5** (Step 1). Local and CI must use the **same exact** version. |
 | Patch = Dart code + assets only | UI and logic changes ✅. New plugins, native code, `android/`, `ios/`, Flutter upgrades ❌ need a new store release. |
+| Patch code may only call **Flutter APIs the store build exposes** | If v1 never used e.g. `MainAxisSize`, a patch can't either. The patch fails with `PATCH_UNSAFE`. Use APIs the store build already uses, or make a new store release. |
 | Patch applies on the **next cold start** | After install, the user must fully close and reopen the app. |
 | Android: **arm64-v8a**, Android **9+** | Test on a real arm64 phone (or an arm64 emulator). Android 7–8 run unpatched. |
 | Only **release hosts built by `flutter_patcher build`** accept patches | `flutter run` / `flutter build apk` apps are never patched. Debug mode cannot test OTA. |
@@ -502,6 +503,7 @@ In that case the **OTA patch** workflow fails with an error like `PATCH_NATIVE_C
 | `Couldn't resolve the package 'dynamic_modules'` | In flutter_patcher's build copy, `pubspec.yaml` ended up newer than `pubspec.lock`, so `flutter build` re-ran `pub get` and dropped the injected package. This happens on Linux CI, where the copy gets fresh timestamps. The workflows wrap the build with [.github/scripts/keep-pubspec-lock-fresh.sh](.github/scripts/keep-pubspec-lock-fresh.sh). |
 | `PATCH_CONFIG_INVALID: Use a new output directory` | `patch --out` must point to a directory that does not exist yet. |
 | `Directory listing failed: …/cupertino_icons-1.0.9/lib/` | flutter_patcher 1.1.1 bug: `patch` expects every package to have `lib/`, and asset-only packages have none. The helper script creates an empty `lib/` in flutter_patcher's pub cache. |
+| `PATCH_UNSAFE … Cannot invoke member 'X' from a dynamic module` | A patch can only call Flutter/Dart APIs that the installed store build exposes (its *dynamic interface*). Use an API the store build already uses (e.g. `mainAxisAlignment: MainAxisAlignment.center` instead of `MainAxisSize.min`), or ship a new store release that uses it. |
 | Pages URL 404 | Pages not enabled on `gh-pages`, wrong repo name in `url`, or `.nojekyll` missing. |
 | Push from workflow rejected | Set Actions **Read and write permissions** (Step 6). |
 | Phone is 32-bit / Android 8 | Not supported. The app runs, but patches never apply. |

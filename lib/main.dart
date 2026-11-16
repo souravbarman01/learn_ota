@@ -46,7 +46,9 @@ class HomePage extends StatelessWidget {
       ),
       body: Center(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          // Not `mainAxisSize: MainAxisSize.min`: patches may only call APIs
+          // the installed (host) build exposes, and v1 never used MainAxisSize.
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             FilledButton(
               onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
