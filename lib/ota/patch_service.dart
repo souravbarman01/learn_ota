@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_patcher/flutter_patcher.dart';
 import 'package:http/http.dart' as http;
@@ -30,7 +31,57 @@ class PatchEntry {
       );
 }
 
+/// Fetches patch files from GitHub Pages ourselves instead of using
+/// `FlutterPatcher.checkUpdate()` / `applyPatch()`.
+///
+/// Why: Dart's HttpClient asks for gzip, and GitHub Pages then gzips the
+/// .fptc file and applies the `Range: bytes=0-145` header to the *compressed*
+/// bytes. flutter_patcher unpacks fewer than 146 bytes and fails with
+/// "Not a patch file". Asking for `Accept-Encoding: identity` returns the raw
+/// bytes, and a missing file then correctly returns 404 (not 503).
 class PatchService {
+  static const _headerSize = 146;
+  static const _timeout = Duration(seconds: 15);
+  static const _noGzip = {'Accept-Encoding': 'identity'};
+
+  static Future<Uri> _patchUri() async {
+    final target = await FlutterPatcher.patchTarget;
+    return Uri.parse('$kPatchBaseUrl/${target.fileName}');
+  }
+
+  /// True when the server has a patch this app would accept (newer than the
+  /// installed one, built for this exact APK).
+  static Future<bool> hasUpdate() async {
+    final res = await http
+        .get(
+          await _patchUri(),
+          headers: {..._noGzip, 'Range': 'bytes=0-${_headerSize - 1}'},
+        )
+        .timeout(_timeout);
+    if (res.statusCode == 404) return false; // no patch for this build yet
+    if (res.statusCode != 200 && res.statusCode != 206) {
+      throw Exception('Patch check: HTTP ${res.statusCode}');
+    }
+    if (res.bodyBytes.length < _headerSize) {
+      throw Exception('Patch check: only ${res.bodyBytes.length} bytes');
+    }
+    final inspection = await FlutterPatcher.inspectPatch(
+      res.bodyBytes.sublist(0, _headerSize),
+    );
+    return inspection.fresh;
+  }
+
+  /// Downloads the whole patch file for this build.
+  static Future<Uint8List> downloadPatch() async {
+    final res = await http
+        .get(await _patchUri(), headers: _noGzip)
+        .timeout(const Duration(minutes: 2));
+    if (res.statusCode != 200) {
+      throw Exception('Patch download: HTTP ${res.statusCode}');
+    }
+    return res.bodyBytes;
+  }
+
   /// Patch history for the installed build number, newest first.
   static Future<List<PatchEntry>> fetchPatches() async {
     final myCode = await FlutterPatcher.appVersionCode;
@@ -38,7 +89,7 @@ class PatchService {
     final uri = Uri.parse(
       '$kPatchBaseUrl/patches.json?t=${DateTime.now().millisecondsSinceEpoch}',
     );
-    final res = await http.get(uri).timeout(const Duration(seconds: 10));
+    final res = await http.get(uri).timeout(_timeout);
     if (res.statusCode == 404) return [];
     if (res.statusCode != 200) {
       throw Exception('patches.json: HTTP ${res.statusCode}');

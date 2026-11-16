@@ -38,25 +38,41 @@ jobs:
           ref: gh-pages
           path: site
 
+      - name: Check a baseline exists for this build number
+        id: baseline
+        run: |
+          VC=$(grep '^version:' pubspec.yaml | sed 's/.*+//')
+          if [ -f ".flutter_patcher/baselines/release-default-$VC-arm64-v8a.tar.gz" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No baseline for build $VC yet. Run 'Release host (store build)' first. Skipping the patch."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-java@v5
+        if: steps.baseline.outputs.found == 'true'
         with:
           distribution: temurin
           java-version: "17"
 
       - uses: subosito/flutter-action@v2
+        if: steps.baseline.outputs.found == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
       - uses: actions/cache@v4
+        if: steps.baseline.outputs.found == 'true'
         with:
           path: ~/.flutter_patcher
           key: fp-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
 
       - run: flutter pub get
+        if: steps.baseline.outputs.found == 'true'
 
       - name: Build patch
+        if: steps.baseline.outputs.found == 'true'
         env:
           FLUTTER_PATCHER_KEYS: ${{ secrets.FLUTTER_PATCHER_KEYS }}
         run: |
@@ -85,6 +101,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Publish to GitHub Pages
+        if: steps.baseline.outputs.found == 'true'
         run: |
           FILE=$(find build/patch -name '*.fptc' | head -n1)
           if [ -z "$FILE" ]; then

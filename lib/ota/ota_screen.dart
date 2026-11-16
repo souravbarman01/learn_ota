@@ -16,11 +16,9 @@ class _OtaScreenState extends State<OtaScreen> {
   bool _available = false; // false in debug / `flutter run` builds
   String? _installed; // currently installed patch, if any
   List<PatchEntry> _patches = [];
-  PatchCheckResult? _check;
+  bool _hasUpdate = false;
   String? _error;
   String? _progress; // non-null while installing
-
-  bool get _hasUpdate => _check?.hasUpdate ?? false;
 
   @override
   void initState() {
@@ -33,33 +31,54 @@ class _OtaScreenState extends State<OtaScreen> {
       _loading = true;
       _error = null;
     });
+    final errors = <String>[];
     try {
+      // Each step is guarded on its own, so one failure doesn't hide the
+      // others (e.g. a failed update check no longer shows "disabled").
       final available = await FlutterPatcher.isAvailable;
       final installed = await FlutterPatcher.currentVersion;
-      final check = available ? await FlutterPatcher.checkUpdate() : null;
-      List<PatchEntry> patches = [];
+      if (mounted) {
+        setState(() {
+          _available = available;
+          _installed = installed;
+        });
+      }
+
+      var hasUpdate = false;
+      if (available) {
+        try {
+          hasUpdate = await PatchService.hasUpdate();
+        } catch (e) {
+          errors.add('Update check failed: $e');
+        }
+      }
+
+      var patches = <PatchEntry>[];
       try {
         patches = await PatchService.fetchPatches();
       } catch (e) {
-        _error = 'Could not load patch list: $e';
+        errors.add('Could not load patch list: $e');
       }
+
       if (!mounted) return;
       setState(() {
-        _available = available;
-        _installed = installed;
-        _check = check;
+        _hasUpdate = hasUpdate;
         _patches = patches;
       });
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      errors.add('$e');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = errors.isEmpty ? null : errors.join('\n');
+        });
+      }
     }
   }
 
   Future<void> _install() async {
-    final patch = _check?.patch;
-    if (patch == null) return;
+    if (!_hasUpdate) return;
 
     final accept = await showDialog<bool>(
       context: context,
@@ -84,15 +103,23 @@ class _OtaScreenState extends State<OtaScreen> {
 
     setState(() {
       _error = null;
-      _progress = 'Starting…';
+      _progress = 'Downloading…';
     });
-    final result = await FlutterPatcher.applyPatch(
-      patch,
-      // phases: downloading → verifying → finalizing
-      onProgress: (p) {
-        if (mounted) setState(() => _progress = '$p');
-      },
-    );
+    final PatchApplyResult result;
+    try {
+      final bytes = await PatchService.downloadPatch();
+      if (!mounted) return;
+      setState(() => _progress = 'Verifying and installing…');
+      result = await FlutterPatcher.applyPatchBytes(bytes);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _progress = null;
+          _error = 'Download failed: $e';
+        });
+      }
+      return;
+    }
     if (!mounted) return;
 
     if (!result.ok) {
