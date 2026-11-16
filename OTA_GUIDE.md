@@ -224,17 +224,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
 
       - name: Checkout baselines branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: baselines
           path: .flutter_patcher/baselines
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -258,6 +258,25 @@ jobs:
         env:
           FLUTTER_PATCHER_KEYS: ${{ secrets.FLUTTER_PATCHER_KEYS }}
         run: dart run flutter_patcher build android --out build/host
+
+      - name: Show flutter_patcher build log (on failure)
+        if: failure()
+        run: |
+          B=~/.flutter_patcher/builds
+          ls -la "$B" 2>/dev/null || { echo "no $B"; exit 0; }
+          find "$B" -type f -size -5M | while read -r f; do
+            echo "::group::$f"; tail -n 300 "$f"; echo "::endgroup::"
+          done
+          echo "===== Likely cause ====="
+          grep -rhn -A15 -E "What went wrong|FAILURE: Build failed" "$B" 2>/dev/null | head -80 || true
+
+      - name: Upload flutter_patcher build log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-patcher-build-log
+          path: ~/.flutter_patcher/builds/
+          if-no-files-found: ignore
 
       - name: Save baseline to `baselines` branch
         working-directory: .flutter_patcher/baselines
@@ -311,21 +330,21 @@ jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Checkout baselines
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: baselines
           path: .flutter_patcher/baselines
 
       - name: Checkout gh-pages
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: gh-pages
           path: site
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -349,6 +368,25 @@ jobs:
         run: |
           mkdir -p build/patch
           dart run flutter_patcher patch android --out build/patch | tee build/patch-result.json
+
+      - name: Show flutter_patcher build log (on failure)
+        if: failure()
+        run: |
+          B=~/.flutter_patcher/builds
+          ls -la "$B" 2>/dev/null || { echo "no $B"; exit 0; }
+          find "$B" -type f -size -5M | while read -r f; do
+            echo "::group::$f"; tail -n 300 "$f"; echo "::endgroup::"
+          done
+          echo "===== Likely cause ====="
+          grep -rhn -A15 -E "What went wrong|FAILURE: Build failed" "$B" 2>/dev/null | head -80 || true
+
+      - name: Upload flutter_patcher build log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-patcher-build-log
+          path: ~/.flutter_patcher/builds/
+          if-no-files-found: ignore
 
       - name: Publish to GitHub Pages
         run: |
