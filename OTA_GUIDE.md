@@ -123,7 +123,12 @@ Copy the output. On GitHub → **Settings → Secrets and variables → Actions 
 - Name: `FLUTTER_PATCHER_KEYS`
 - Value: the base64 text
 
-Also keep a backup of `keys export --out flutter_patcher_keys.bundle` in a password manager.
+Also make a backup file of the key and store it safely (password manager / private drive), then delete the local copy:
+
+```bash
+dart run flutter_patcher keys export --out flutter_patcher_keys.bundle
+# move flutter_patcher_keys.bundle somewhere safe, outside the project
+```
 **If you lose the key, you cannot patch existing installs. You would need a new store release.**
 
 ### 4.2 `.gitignore`
