@@ -254,19 +254,10 @@ jobs:
       - run: flutter pub get
       - run: dart run flutter_patcher doctor --project .
 
-      # Flutter skips its own `pub get` only if pubspec.yaml is older than
-      # pubspec.lock. git checkout writes pubspec.lock first, so the build
-      # re-runs pub get, which drops the `dynamic_modules` package injected by
-      # flutter_patcher -> "Couldn't resolve the package 'dynamic_modules'".
-      - name: Make pubspec.lock newer than pubspec.yaml
-        run: |
-          touch -d '-1 minute' pubspec.yaml
-          touch pubspec.lock
-
       - name: Build release host + baseline
         env:
           FLUTTER_PATCHER_KEYS: ${{ secrets.FLUTTER_PATCHER_KEYS }}
-        run: dart run flutter_patcher build android --out build/host
+        run: bash .github/scripts/keep-pubspec-lock-fresh.sh dart run flutter_patcher build android --out build/host
 
       - name: Show flutter_patcher build log (on failure)
         if: failure()
@@ -371,21 +362,12 @@ jobs:
 
       - run: flutter pub get
 
-      # Flutter skips its own `pub get` only if pubspec.yaml is older than
-      # pubspec.lock. git checkout writes pubspec.lock first, so the build
-      # re-runs pub get, which drops the `dynamic_modules` package injected by
-      # flutter_patcher -> "Couldn't resolve the package 'dynamic_modules'".
-      - name: Make pubspec.lock newer than pubspec.yaml
-        run: |
-          touch -d '-1 minute' pubspec.yaml
-          touch pubspec.lock
-
       - name: Build patch
         env:
           FLUTTER_PATCHER_KEYS: ${{ secrets.FLUTTER_PATCHER_KEYS }}
         run: |
           mkdir -p build/patch
-          dart run flutter_patcher patch android --out build/patch | tee build/patch-result.json
+          bash .github/scripts/keep-pubspec-lock-fresh.sh dart run flutter_patcher patch android --out build/patch | tee build/patch-result.json
 
       - name: Show flutter_patcher build log (on failure)
         if: failure()
@@ -439,6 +421,8 @@ jobs:
           git commit -m "OTA patch ${GITHUB_SHA::7}: $TITLE"
           git push origin HEAD:gh-pages
 ```
+
+Also add [.github/scripts/keep-pubspec-lock-fresh.sh](.github/scripts/keep-pubspec-lock-fresh.sh) (used by both workflows; see Troubleshooting).
 
 Commit both workflows on `main`. Adding them doesn't trigger a patch, because `.github/` is not in `paths`.
 
@@ -513,7 +497,7 @@ In that case the **OTA patch** workflow fails with an error like `PATCH_NATIVE_C
 | App lists the patch but `hasUpdate` is false | Pages cache (wait ~10 min), or this device already has it. |
 | `applyPatch` → `signatureInvalid` | The host was built with a different public key than CI signs with. Rebuild the host. |
 | `applyPatch` → `invalidArgs` | The patch is not newer than the installed one (sequence rule). |
-| `Couldn't resolve the package 'dynamic_modules'` | Flutter re-ran `pub get` because `pubspec.yaml` is not older than `pubspec.lock`. The workflows `touch` them in the right order; locally run `touch pubspec.lock` before `build`. |
+| `Couldn't resolve the package 'dynamic_modules'` | In flutter_patcher's build copy, `pubspec.yaml` ended up newer than `pubspec.lock`, so `flutter build` re-ran `pub get` and dropped the injected package. This happens on Linux CI, where the copy gets fresh timestamps. The workflows wrap the build with [.github/scripts/keep-pubspec-lock-fresh.sh](.github/scripts/keep-pubspec-lock-fresh.sh). |
 | Pages URL 404 | Pages not enabled on `gh-pages`, wrong repo name in `url`, or `.nojekyll` missing. |
 | Push from workflow rejected | Set Actions **Read and write permissions** (Step 6). |
 | Phone is 32-bit / Android 8 | Not supported. The app runs, but patches never apply. |

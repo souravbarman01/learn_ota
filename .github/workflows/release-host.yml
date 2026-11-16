@@ -43,19 +43,10 @@ jobs:
       - run: flutter pub get
       - run: dart run flutter_patcher doctor --project .
 
-      # Flutter skips its own `pub get` only if pubspec.yaml is older than
-      # pubspec.lock. git checkout writes pubspec.lock first, so the build
-      # re-runs pub get, which drops the `dynamic_modules` package injected by
-      # flutter_patcher -> "Couldn't resolve the package 'dynamic_modules'".
-      - name: Make pubspec.lock newer than pubspec.yaml
-        run: |
-          touch -d '-1 minute' pubspec.yaml
-          touch pubspec.lock
-
       - name: Build release host + baseline
         env:
           FLUTTER_PATCHER_KEYS: ${{ secrets.FLUTTER_PATCHER_KEYS }}
-        run: dart run flutter_patcher build android --out build/host
+        run: bash .github/scripts/keep-pubspec-lock-fresh.sh dart run flutter_patcher build android --out build/host
 
       - name: Show flutter_patcher build log (on failure)
         if: failure()
