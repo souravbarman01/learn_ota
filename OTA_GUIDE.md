@@ -153,8 +153,8 @@ flutter_patcher_keys.bundle
 |---|---|
 | [lib/main.dart](lib/main.dart) | `FlutterPatcher.init()` before `runApp`. Home has a centered **"Hello Patch 1"** button and an **OTA icon** (`Icons.system_update`) in the app bar that opens the OTA screen. |
 | [lib/ota/ota_config.dart](lib/ota/ota_config.dart) | `kPatchBaseUrl`. **Replace `souravbarman01`.** It must equal `url:` in `flutter_patcher.yaml`. |
-| [lib/ota/patch_service.dart](lib/ota/patch_service.dart) | Downloads `patches.json` (patch history from CI) and filters it to this build number. |
-| [lib/ota/ota_screen.dart](lib/ota/ota_screen.dart) | Pull-to-refresh or the refresh icon → `checkUpdate()`. If an update exists → **Install** → *Accept* dialog → `applyPatch()` with progress → automatic restart. |
+| [lib/ota/patch_service.dart](lib/ota/patch_service.dart) | Checks and downloads the patch itself with `Accept-Encoding: identity` (GitHub Pages' gzip breaks the built-in `checkUpdate()`), checks it with `inspectPatch`, and loads `patches.json`. |
+| [lib/ota/ota_screen.dart](lib/ota/ota_screen.dart) | Pull-to-refresh or the refresh icon → `PatchService.hasUpdate()`. If an update exists → **Install** → *Accept* dialog → download + `applyPatchBytes()` → automatic restart. |
 | [lib/ota/app_restart.dart](lib/ota/app_restart.dart) + [MainActivity.kt](android/app/src/main/kotlin/com/example/learn_ota/MainActivity.kt) | Method channel `learn_ota/app_restart`: kills the process and relaunches the app, so the patch loads on this cold start. On iOS (not implemented) the screen asks the user to reopen the app. |
 
 > The restart code is **native**, so it must be in the store build (host). It is, as long as you
@@ -345,25 +345,41 @@ jobs:
           ref: gh-pages
           path: site
 
+      - name: Check a baseline exists for this build number
+        id: baseline
+        run: |
+          VC=$(grep '^version:' pubspec.yaml | sed 's/.*+//')
+          if [ -f ".flutter_patcher/baselines/release-default-$VC-arm64-v8a.tar.gz" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No baseline for build $VC yet. Run 'Release host (store build)' first. Skipping the patch."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-java@v5
+        if: steps.baseline.outputs.found == 'true'
         with:
           distribution: temurin
           java-version: "17"
 
       - uses: subosito/flutter-action@v2
+        if: steps.baseline.outputs.found == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
       - uses: actions/cache@v4
+        if: steps.baseline.outputs.found == 'true'
         with:
           path: ~/.flutter_patcher
           key: fp-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
 
       - run: flutter pub get
+        if: steps.baseline.outputs.found == 'true'
 
       - name: Build patch
+        if: steps.baseline.outputs.found == 'true'
         env:
           FLUTTER_PATCHER_KEYS: ${{ secrets.FLUTTER_PATCHER_KEYS }}
         run: |
@@ -392,6 +408,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Publish to GitHub Pages
+        if: steps.baseline.outputs.found == 'true'
         run: |
           FILE=$(find build/patch -name '*.fptc' | head -n1)
           if [ -z "$FILE" ]; then
@@ -476,7 +493,7 @@ You added a plugin, changed `android/`, upgraded Flutter or `flutter_patcher`, o
 In that case the **OTA patch** workflow fails with an error like `PATCH_NATIVE_CHANGE`. Then:
 
 1. Bump the build number in `pubspec.yaml` (`1.0.0+1` → `1.0.1+2`) and merge to `main`.
-   The patch workflow fails here, which is expected.
+   The OTA patch workflow skips with a notice (no baseline for the new build number yet).
 2. Run **Release host** again and ship the new APK.
 3. Later merges produce `2-arm64-v8a.fptc`. Old installs (`+1`) filter those patches out of their list.
 
@@ -504,6 +521,7 @@ In that case the **OTA patch** workflow fails with an error like `PATCH_NATIVE_C
 | `PATCH_CONFIG_INVALID: Use a new output directory` | `patch --out` must point to a directory that does not exist yet. |
 | `Directory listing failed: …/cupertino_icons-1.0.9/lib/` | flutter_patcher 1.1.1 bug: `patch` expects every package to have `lib/`, and asset-only packages have none. The helper script creates an empty `lib/` in flutter_patcher's pub cache. |
 | `PATCH_UNSAFE … Cannot invoke member 'X' from a dynamic module` | A patch can only call Flutter/Dart APIs that the installed store build exposes (its *dynamic interface*). Use an API the store build already uses (e.g. `mainAxisAlignment: MainAxisAlignment.center` instead of `MainAxisSize.min`), or ship a new store release that uses it. |
+| `PatcherException: FormatException: Not a patch file` | GitHub Pages gzips the `.fptc` and applies `Range` to the **compressed** bytes, so `FlutterPatcher.checkUpdate()` reads fewer than 146 bytes. Download with `Accept-Encoding: identity` and install with `inspectPatch` + `applyPatchBytes` (see [lib/ota/patch_service.dart](lib/ota/patch_service.dart)). |
 | Pages URL 404 | Pages not enabled on `gh-pages`, wrong repo name in `url`, or `.nojekyll` missing. |
 | Push from workflow rejected | Set Actions **Read and write permissions** (Step 6). |
 | Phone is 32-bit / Android 8 | Not supported. The app runs, but patches never apply. |
