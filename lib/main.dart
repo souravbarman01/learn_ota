@@ -45,11 +45,23 @@ class HomePage extends StatelessWidget {
         ],
       ),
       body: Center(
-        child: FilledButton(
-          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Hello Patch 1')),
-          ),
-          child: const Text('Hello Patch 1'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FilledButton(
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Hello Patch 1')),
+              ),
+              child: const Text('Hello Patch 1'),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Hello Patch 2')),
+              ),
+              child: const Text('Hello Patch 2'),
+            ),
+          ],
         ),
       ),
     );
