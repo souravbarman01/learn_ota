@@ -501,6 +501,7 @@ In that case the **OTA patch** workflow fails with an error like `PATCH_NATIVE_C
 | `applyPatch` → `invalidArgs` | The patch is not newer than the installed one (sequence rule). |
 | `Couldn't resolve the package 'dynamic_modules'` | In flutter_patcher's build copy, `pubspec.yaml` ended up newer than `pubspec.lock`, so `flutter build` re-ran `pub get` and dropped the injected package. This happens on Linux CI, where the copy gets fresh timestamps. The workflows wrap the build with [.github/scripts/keep-pubspec-lock-fresh.sh](.github/scripts/keep-pubspec-lock-fresh.sh). |
 | `PATCH_CONFIG_INVALID: Use a new output directory` | `patch --out` must point to a directory that does not exist yet. |
+| `Directory listing failed: …/cupertino_icons-1.0.9/lib/` | flutter_patcher 1.1.1 bug: `patch` expects every package to have `lib/`, and asset-only packages have none. The helper script creates an empty `lib/` in flutter_patcher's pub cache. |
 | Pages URL 404 | Pages not enabled on `gh-pages`, wrong repo name in `url`, or `.nojekyll` missing. |
 | Push from workflow rejected | Set Actions **Read and write permissions** (Step 6). |
 | Phone is 32-bit / Android 8 | Not supported. The app runs, but patches never apply. |
