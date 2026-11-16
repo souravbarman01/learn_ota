@@ -41,7 +41,7 @@ jobs:
           key: fp-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
 
       - run: flutter pub get
-      - run: dart run flutter_patcher doctor --project
+      - run: dart run flutter_patcher doctor --project .
 
       - name: Build release host + baseline
         env:

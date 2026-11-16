@@ -108,7 +108,7 @@ trust:
 Check the setup:
 
 ```bash
-dart run flutter_patcher doctor --project
+dart run flutter_patcher doctor --project .
 dart run flutter_patcher keys status
 ```
 
@@ -252,7 +252,7 @@ jobs:
           key: fp-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
 
       - run: flutter pub get
-      - run: dart run flutter_patcher doctor --project
+      - run: dart run flutter_patcher doctor --project .
 
       - name: Build release host + baseline
         env:
@@ -464,7 +464,7 @@ In that case the **OTA patch** workflow fails with an error like `PATCH_NATIVE_C
 Useful commands:
 
 ```bash
-dart run flutter_patcher doctor --project
+dart run flutter_patcher doctor --project .
 dart run flutter_patcher keys status
 curl -I https://souravbarman01.github.io/learn_ota/patches/1-arm64-v8a.fptc   # must be 200, no redirect
 ```
