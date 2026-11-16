@@ -60,7 +60,9 @@ jobs:
         env:
           FLUTTER_PATCHER_KEYS: ${{ secrets.FLUTTER_PATCHER_KEYS }}
         run: |
-          mkdir -p build/patch
+          set -o pipefail   # fail this step if patch fails (not hidden by tee)
+          # --out must be a NEW directory: create only its parent
+          rm -rf build/patch && mkdir -p build
           bash .github/scripts/keep-pubspec-lock-fresh.sh dart run flutter_patcher patch android --out build/patch | tee build/patch-result.json
 
       - name: Show flutter_patcher build log (on failure)

@@ -366,7 +366,9 @@ jobs:
         env:
           FLUTTER_PATCHER_KEYS: ${{ secrets.FLUTTER_PATCHER_KEYS }}
         run: |
-          mkdir -p build/patch
+          set -o pipefail   # fail this step if patch fails (not hidden by tee)
+          # --out must be a NEW directory: create only its parent
+          rm -rf build/patch && mkdir -p build
           bash .github/scripts/keep-pubspec-lock-fresh.sh dart run flutter_patcher patch android --out build/patch | tee build/patch-result.json
 
       - name: Show flutter_patcher build log (on failure)
@@ -498,6 +500,7 @@ In that case the **OTA patch** workflow fails with an error like `PATCH_NATIVE_C
 | `applyPatch` → `signatureInvalid` | The host was built with a different public key than CI signs with. Rebuild the host. |
 | `applyPatch` → `invalidArgs` | The patch is not newer than the installed one (sequence rule). |
 | `Couldn't resolve the package 'dynamic_modules'` | In flutter_patcher's build copy, `pubspec.yaml` ended up newer than `pubspec.lock`, so `flutter build` re-ran `pub get` and dropped the injected package. This happens on Linux CI, where the copy gets fresh timestamps. The workflows wrap the build with [.github/scripts/keep-pubspec-lock-fresh.sh](.github/scripts/keep-pubspec-lock-fresh.sh). |
+| `PATCH_CONFIG_INVALID: Use a new output directory` | `patch --out` must point to a directory that does not exist yet. |
 | Pages URL 404 | Pages not enabled on `gh-pages`, wrong repo name in `url`, or `.nojekyll` missing. |
 | Push from workflow rejected | Set Actions **Read and write permissions** (Step 6). |
 | Phone is 32-bit / Android 8 | Not supported. The app runs, but patches never apply. |
